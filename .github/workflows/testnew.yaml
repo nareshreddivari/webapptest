@@ -23,7 +23,6 @@ jobs:
       # Add actual dev deployment steps here
 
   deploy-test:
-    if: ${{ github.event.inputs.environment == 'Test' }}
     name: Deploy to Test (Approval Required)
     runs-on: ubuntu-latest
     needs: deploy-dev
@@ -100,7 +99,6 @@ jobs:
             --name "ADF-Deployment-${{ github.run_number }}-Test"
 
   deploy-prod:
-    if: ${{ github.event.inputs.environment == 'prod' }}
     name: Deploy to Prod
     runs-on: ubuntu-latest
     needs: deploy-test
