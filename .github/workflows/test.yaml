@@ -1,0 +1,162 @@
+name: Deploy ADF
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Select environment (dev, Test, or prod)'
+        required: true
+        type: string
+        options:
+          - dev
+          - Test
+          - prod
+
+jobs:
+  deploy-dev:
+    if: ${{ github.event.inputs.environment == 'dev' }}
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Run Dev Deployment
+        run: echo "Running Dev Deployment"
+      # Add actual dev deployment steps here
+
+  deploy-test:
+    if: ${{ github.event.inputs.environment == 'Test' || github.event.inputs.environment == 'prod' }}
+    name: Deploy to Test
+    runs-on: ubuntu-latest
+    environment: Test
+
+    steps:
+      - name: Set environment variable
+        id: set_env
+        run: echo "env=Test" >> $GITHUB_OUTPUT
+
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          ref: "adf_publish"
+
+      - name: Load ADF Config
+        run: |
+          if [[ -n "${{ vars.ADF_CONFIG_VALUES }}" ]]; then
+            CONFIG="${{ vars.ADF_CONFIG_VALUES }}"
+          elif [[ -n "${{ secrets.ADF_CONFIG_VALUES }}" ]]; then
+            CONFIG="${{ secrets.ADF_CONFIG_VALUES }}"
+          else
+            echo "No ADF_CONFIG_VALUES found"
+            exit 1
+          fi
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+
+      - name: Export ADF Config to Env
+        run: |
+          for pair in ${CONFIG//;/ }; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            echo "$key=$value" >> $GITHUB_ENV
+          done
+
+      - name: Update parameters.json
+        run: |
+          jq \
+            --arg factoryName "$FACTORY_NAME" \
+            --arg privateLinkId "$mpe_adls_data_fusion_properties_privateLinkResourceId" \
+            --arg groupId "dfs" \
+            '.parameters.factoryName.value = $factoryName |
+             .parameters.mpe_adls_data_fusion_properties_privateLinkResourceId.value = $privateLinkId |
+             .parameters.mpe_adls_data_fusion_properties_groupId.value = $groupId' \
+            adf-nip-dev-eus/ARMTemplateParametersForFactory.json > temp.json && mv temp.json adf-nip-dev-eus/ARMTemplateParametersForFactory.json
+
+      - name: Generate Artifact ID
+        id: artifact_versioning
+        run: |
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          ARTIFACT_ID="arm-template-${{ github.run_number }}-Test-$TIMESTAMP"
+          echo "ARTIFACT_ID=$ARTIFACT_ID" >> $GITHUB_ENV
+          echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact_versioning.outputs.artifact_id }}
+          path: |
+            adf-nip-dev-eus/ARMTemplateForFactory.json
+            adf-nip-dev-eus/ARMTemplateParametersForFactory.json
+
+      - name: Deploy ADF
+        run: |
+          az login --service-principal \
+            -u ${{ secrets.AZURE_APP_ID }} \
+            -p ${{ secrets.AZURE_CLIENT_SECRET }} \
+            --tenant ${{ secrets.AZURE_TENANT_ID }}
+          az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          az deployment group create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --template-file adf-nip-dev-eus/ARMTemplateForFactory.json \
+            --parameters adf-nip-dev-eus/ARMTemplateParametersForFactory.json \
+            --name "ADF-Deployment-${{ github.run_number }}-Test"
+
+  deploy-prod:
+    if: ${{ github.event.inputs.environment == 'prod' }}
+    name: Deploy to Prod
+    runs-on: ubuntu-latest
+    needs: deploy-test
+    environment: production
+
+    steps:
+      - name: Set environment variable
+        id: set_env
+        run: echo "env=prod" >> $GITHUB_OUTPUT
+
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          ref: "adf_publish"
+
+      - name: Load ADF Config
+        run: |
+          if [[ -n "${{ vars.ADF_CONFIG_VALUES }}" ]]; then
+            CONFIG="${{ vars.ADF_CONFIG_VALUES }}"
+          elif [[ -n "${{ secrets.ADF_CONFIG_VALUES }}" ]]; then
+            CONFIG="${{ secrets.ADF_CONFIG_VALUES }}"
+          else
+            echo "No ADF_CONFIG_VALUES found"
+            exit 1
+          fi
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+
+      - name: Export ADF Config to Env
+        run: |
+          for pair in ${CONFIG//;/ }; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            echo "$key=$value" >> $GITHUB_ENV
+          done
+
+      - name: Update parameters.json
+        run: |
+          jq \
+            --arg factoryName "$FACTORY_NAME" \
+            --arg privateLinkId "$mpe_adls_data_fusion_properties_privateLinkResourceId" \
+            --arg groupId "dfs" \
+            '.parameters.factoryName.value = $factoryName |
+             .parameters.mpe_adls_data_fusion_properties_privateLinkResourceId.value = $privateLinkId |
+             .parameters.mpe_adls_data_fusion_properties_groupId.value = $groupId' \
+            adf-nip-dev-eus/ARMTemplateParametersForFactory.json > temp.json && mv temp.json adf-nip-dev-eus/ARMTemplateParametersForFactory.json
+
+      - name: Deploy ADF
+        run: |
+          az login --service-principal \
+            -u ${{ secrets.AZURE_APP_ID }} \
+            -p ${{ secrets.AZURE_CLIENT_SECRET }} \
+            --tenant ${{ secrets.AZURE_TENANT_ID }}
+          az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          az deployment group create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --template-file adf-nip-dev-eus/ARMTemplateForFactory.json \
+            --parameters adf-nip-dev-eus/ARMTemplateParametersForFactory.json \
+            --name "ADF-Deployment-${{ github.run_number }}-prod"
