@@ -1,4 +1,4 @@
-name: Deploy ADF
+name:  New ADF
 
 on:
   workflow_dispatch:
