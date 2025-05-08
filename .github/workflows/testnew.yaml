@@ -1,4 +1,4 @@
-name:  New ADF
+name: New ADF
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ jobs:
       # Add actual dev deployment steps here
 
   deploy-test:
-    if: ${{ github.event.inputs.environment == 'Test' || github.event.inputs.environment == 'prod' }}
+    if: ${{ github.event.inputs.environment == 'Test' }}
     name: Deploy to Test (Approval Required)
     runs-on: ubuntu-latest
     needs: deploy-dev
