@@ -31,24 +31,21 @@ jobs:
     environment: Test
 
     steps:
-      - name: Run Dev Deployment
-        run: echo "Running Dev Deployment"
-      # Add actual dev deployment steps here
-
+      - name: Run Test Deployment
+        run: echo "Running Test Deployment"
+      # Add actual test deployment steps here
 
   deploy-prod:
-    if: ${{ github.event.inputs.environment == 'prod' }}
     name: Deploy to Prod
     runs-on: ubuntu-latest
     needs: deploy-test
     environment: production
 
     steps:
-      - name: Run Dev Deployment
-        run: echo "Running Dev Deployment"
-      # Add actual dev deployment steps here
+      - name: Run Prod Deployment
+        run: echo "Running Prod Deployment"
+      # Add actual prod deployment steps here
 
-      
       - name: Deploy ADF
         run: |
           az login --service-principal \
